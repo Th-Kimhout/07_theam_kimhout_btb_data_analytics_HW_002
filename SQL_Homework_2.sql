@@ -8,7 +8,7 @@ AS
 $$
 
 DECLARE
-    file_name    text;
+file_name    text;
     is_directory bool;
     full_path    text;
 
@@ -19,23 +19,23 @@ BEGIN
     IF is_directory THEN
         -- If it's a directory, loop through all .csv files.
         FOR file_name IN
-            SELECT fname
-            FROM PG_LS_DIR(path_name) AS fname
-            WHERE fname LIKE '%.csv'
-            LOOP
+SELECT fname
+FROM PG_LS_DIR(path_name) AS fname
+WHERE fname LIKE '%.csv'
+    LOOP
                 -- Construct the full path using a forward slash for cross-platform compatibility.
                 full_path := path_name || '/' || file_name;
-                RAISE NOTICE 'Processing file: %', full_path;
+RAISE NOTICE 'Processing file: %', full_path;
                 PERFORM process_to_table(full_path);
-            END LOOP;
-    ELSE
+END LOOP;
+ELSE
         -- If it's a single file, just process that file.
         RAISE NOTICE 'Processing file: %', path_name;
         PERFORM process_to_table(path_name);
-    END IF;
+END IF;
 END;
 $$
-    LANGUAGE plpgsql;
+LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION process_to_table(file_path text)
     RETURNS void
@@ -43,7 +43,7 @@ CREATE OR REPLACE FUNCTION process_to_table(file_path text)
 AS
 $$
 DECLARE
-    header_line  text;
+header_line  text;
     header_array text[];
     column_name  text;
     table_name   text := LOWER(REGEXP_REPLACE(file_path, '^.*[/\\]([^/\\]+)\.csv$', '\1'));
@@ -55,15 +55,15 @@ BEGIN
     RAISE NOTICE 'Creating table: %', table_name;
 
     -- Drop the table if it already exists to ensure a fresh import.
-    EXECUTE FORMAT('DROP TABLE IF EXISTS %I', table_name);
+EXECUTE FORMAT('DROP TABLE IF EXISTS %I', table_name);
 
-    -- Create an empty PERMANENT table.
+-- Create an empty PERMANENT table.
 
-    EXECUTE FORMAT('CREATE TABLE %I ()', table_name);
+EXECUTE FORMAT('CREATE TABLE %I ()', table_name);
 
-    -- Read the first line of the file to get the column headers.
+-- Read the first line of the file to get the column headers.
 
-    header_line := SPLIT_PART(PG_READ_FILE(file_path, 0, 8192), E'\n', 1);
+header_line := SPLIT_PART(PG_READ_FILE(file_path, 0, 8192), E'\n', 1);
 
     -- Add columns to the table based on the headers.
     header_array := STRING_TO_ARRAY(header_line, ',');
@@ -79,15 +79,15 @@ BEGIN
                         table_name,
                         column_name
                         );
-            ELSE
+ELSE
                 EXECUTE FORMAT(
                         'ALTER TABLE %I ADD COLUMN %I text',
                         table_name,
                         column_name
                         );
-            END IF;
+END IF;
 
-        END LOOP;
+END LOOP;
 
     copy_sql := FORMAT(
             'COPY %I FROM %L WITH (FORMAT CSV, HEADER TRUE)',
@@ -96,7 +96,7 @@ BEGIN
                 );
 
     RAISE NOTICE 'Executing: %', copy_sql;
-    EXECUTE copy_sql;
+EXECUTE copy_sql;
 
 END;
 $$;
@@ -115,28 +115,28 @@ CREATE OR REPLACE FUNCTION upsert_func(
 AS
 $$
 DECLARE
-    header_line     text;
+header_line     text;
     header_array    text[];
     column_name     text;
     temp_table_name text := LOWER(REGEXP_REPLACE(csv_file_path, '^.*[/\\]([^/\\]+)\.csv$', '\1')) || '_temp';
     copy_sql        text;
     is_exist        bool;
     cols            text;
-    sql             text;
+sql             text;
 BEGIN
     -- Sanitize temp table name
     temp_table_name := REGEXP_REPLACE(temp_table_name, '[^a-zA-Z0-9_]', '_', 'g');
 
     -- Drop temp table if it exists
-    EXECUTE FORMAT('DROP TABLE IF EXISTS %I', temp_table_name);
+EXECUTE FORMAT('DROP TABLE IF EXISTS %I', temp_table_name);
 
-    -- Read first line for headers
-    header_line := SPLIT_PART(PG_READ_FILE(csv_file_path, 0, 8192), E'\n', 1);
+-- Read first line for headers
+header_line := SPLIT_PART(PG_READ_FILE(csv_file_path, 0, 8192), E'\n', 1);
 
     -- Create empty temp table
-    EXECUTE FORMAT('CREATE TEMP TABLE %I ()', temp_table_name);
+EXECUTE FORMAT('CREATE TEMP TABLE %I ()', temp_table_name);
 
-    header_array := STRING_TO_ARRAY(header_line, ',');
+header_array := STRING_TO_ARRAY(header_line, ',');
 
     -- Add columns dynamically
     FOREACH column_name IN ARRAY header_array
@@ -149,14 +149,14 @@ BEGIN
                         temp_table_name,
                         column_name
                         );
-            ELSE
+ELSE
                 EXECUTE FORMAT(
                         'ALTER TABLE %I ADD COLUMN %I text',
                         temp_table_name,
                         column_name
                         );
-            END IF;
-        END LOOP;
+END IF;
+END LOOP;
 
     -- Copy CSV into temp table
     copy_sql := FORMAT(
@@ -164,25 +164,25 @@ BEGIN
             temp_table_name,
             csv_file_path
                 );
-    EXECUTE copy_sql;
+EXECUTE copy_sql;
 
-    -- Check if target table exists
-    SELECT EXISTS (SELECT 1
-                   FROM information_schema.tables
-                   WHERE table_schema = schema_name
-                     AND table_name = target_table)
-    INTO is_exist;
+-- Check if target table exists
+SELECT EXISTS (SELECT 1
+               FROM information_schema.tables
+               WHERE table_schema = schema_name
+                 AND table_name = target_table)
+INTO is_exist;
 
-    -- If exists, UPSERT
-    IF is_exist THEN
-        SELECT STRING_AGG(FORMAT('%I = EXCLUDED.%I', c.column_name, c.column_name), ', ')
-        INTO cols
-        FROM information_schema.columns c
-        WHERE table_schema = schema_name
-          AND table_name = target_table
-          AND c.column_name <> key;
+-- If exists, UPSERT
+IF is_exist THEN
+SELECT STRING_AGG(FORMAT('%I = EXCLUDED.%I', c.column_name, c.column_name), ', ')
+INTO cols
+FROM information_schema.columns c
+WHERE table_schema = schema_name
+  AND table_name = target_table
+  AND c.column_name <> key;
 
-        sql := FORMAT(
+sql := FORMAT(
                 'INSERT INTO %I.%I SELECT * FROM %I
                  ON CONFLICT (%I) DO UPDATE SET %s',
                 schema_name,
@@ -191,11 +191,11 @@ BEGIN
                 key,
                 cols
                );
-        EXECUTE sql;
-    END IF;
+EXECUTE sql;
+END IF;
 
     -- Drop temp table
-    EXECUTE FORMAT('DROP TABLE IF EXISTS %I', temp_table_name);
+EXECUTE FORMAT('DROP TABLE IF EXISTS %I', temp_table_name);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -220,25 +220,25 @@ CREATE OR REPLACE FUNCTION customer_audit_trigger()
     RETURNS TRIGGER AS
 $$
 BEGIN
-    INSERT INTO customer_audit_log(operation,
-                                   old_data,
-                                   new_data,
-                                   date_time)
-    VALUES (TG_OP, -- 'INSERT', 'UPDATE', or 'DELETE'
-            CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN ROW_TO_JSON(OLD) END,
-            CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN ROW_TO_JSON(NEW) END,
-            NOW());
+INSERT INTO customer_audit_log(operation,
+                               old_data,
+                               new_data,
+                               date_time)
+VALUES (TG_OP, -- 'INSERT', 'UPDATE', or 'DELETE'
+        CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN ROW_TO_JSON(OLD) END,
+        CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN ROW_TO_JSON(NEW) END,
+        NOW());
 
-    RETURN NEW;
+RETURN NEW;
 END;
 $$
-    LANGUAGE plpgsql;
+LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_customer_audit
     AFTER INSERT OR UPDATE OR DELETE
-    ON customers
-    FOR EACH ROW
-EXECUTE FUNCTION customer_audit_trigger();
+                    ON customers
+                        FOR EACH ROW
+                        EXECUTE FUNCTION customer_audit_trigger();
 
 INSERT INTO customers(customer_name,
                       gender,
@@ -348,7 +348,7 @@ WHERE age = '53';
 -- With the core table provided, and to finish the rental system, we will have the table as below
 -- 1. customer ( [PK] customer_id, customer_name, gender, age, phone, email )
 -- 2. movie ( [PK] movie_id, title, year, rating, runtime, release_date )
--- 3. movie_rental ( [PK] (customer_id, movie_id), rental_date )
+-- 3. movie_rental ( [PK] rental_id, customer_id, movie_id, rental_date, due_date, status )
 -- 4. genre ( [PK] genre_id, genre_name )
 -- 5. director ( [PK] director_id, director_name )
 -- 6. movie_genre ( [PK] (movie_id, genre_id) )
@@ -395,13 +395,15 @@ CREATE TABLE director
 --- Table: movie_rental
 CREATE TABLE movie_rental
 (
-    rental_id   bigserial PRIMARY KEY,
-    customer_id INTEGER,
-    movie_id    INTEGER,
+    rental_id   SERIAL PRIMARY KEY,
+    customer_id INT  NOT NULL REFERENCES customers (customer_id),
+    movie_id    INT  NOT NULL REFERENCES movies (movie_id),
     rental_date DATE NOT NULL,
-    FOREIGN KEY (customer_id) REFERENCES customer (customer_id) ON DELETE CASCADE,
-    FOREIGN KEY (movie_id) REFERENCES movie (movie_id) ON DELETE CASCADE
+    due_date    DATE NOT NULL,
+    return_date DATE,
+    status      VARCHAR(20) DEFAULT 'rented' CHECK (status IN ('rented', 'returned', 'late', 'lost'))
 );
+
 
 --- Table: movie_genre
 CREATE TABLE movie_genre
@@ -438,7 +440,7 @@ COPY staging_movie
 
 INSERT INTO movie
 SELECT movie_id, title, year::int, rating::int, runtime, released::date
-FROM staging_movie
+FROM staging_movie;
 
 
 CREATE TEMP TABLE staging_movie
@@ -458,7 +460,7 @@ FROM staging_movie;
 INSERT INTO genre (genre_name)
 SELECT DISTINCT TRIM(UNNEST(STRING_TO_ARRAY(s.genre, ',')))
 FROM staging_movie AS s
-ON CONFLICT (genre_name) DO NOTHING;
+    ON CONFLICT (genre_name) DO NOTHING;
 
 INSERT INTO movie_genre (movie_id, genre_id)
 SELECT s.movie_id,
@@ -467,7 +469,7 @@ FROM staging_movie AS s,
      UNNEST(STRING_TO_ARRAY(s.genre, ',')) AS s_genre
          JOIN
      genre AS g ON TRIM(s_genre) = g.genre_name
-ON CONFLICT DO NOTHING;
+    ON CONFLICT DO NOTHING;
 
 --  Load Directors
 INSERT INTO director (director_name)
@@ -481,7 +483,7 @@ FROM staging_movie AS s,
      UNNEST(STRING_TO_ARRAY(s.director, ',')) AS s_director
          JOIN
      director AS d ON TRIM(s_director) = d.director_name
-ON CONFLICT DO NOTHING;
+    ON CONFLICT DO NOTHING;
 
 -- Demo Data in movie rental
 
@@ -490,11 +492,15 @@ VALUES (1, 'John Smith', 'Male', 35, '555-1234', 'john.smith@email.com'),
        (2, 'Jane Doe', 'Female', 28, '555-5678', 'jane.doe@email.com'),
        (3, 'Peter Jones', 'Male', 42, '555-9012', 'peter.jones@email.com');
 
-INSERT INTO movie_rental (customer_id, movie_id, rental_date)
-VALUES (1, 101, '2025-08-14'),
-       (1, 102, '2025-08-10'),
-       (2, 101, '2025-08-12'),
-       (3, 103, '2025-08-11');
+INSERT INTO movie_rental
+(customer_id, movie_id, rental_date, due_date, return_date, status)
+VALUES
+    (1, 101, '2025-08-01', '2025-08-05', '2025-08-04', 'returned'),
+    (2, 102, '2025-08-02', '2025-08-06', '2025-08-08', 'late'),
+    (3, 103, '2025-08-10', '2025-08-14', NULL, 'rented'),
+    (1, 101, '2025-08-12', '2025-08-16', NULL, 'rented');
+
+
 
 --6. Create a comprehensive view that joins all tables to show: customer name, age, movie title, release date, director name, genre name, rental date
 DROP VIEW rental_detail;
@@ -538,6 +544,6 @@ FROM rental_detail;
 
 COPY ( SELECT *
        FROM rental_detail) TO 'D:\HRD\advanced_course_data_analytics\Homework\theam_kimhout_homework_2\Data\rental_detail.csv' WITH (
-    FORMAT CSV,
-    HEADER TRUE
-    );
+           FORMAT CSV,
+           HEADER TRUE
+           );
